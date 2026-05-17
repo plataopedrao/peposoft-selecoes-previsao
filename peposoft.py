@@ -433,8 +433,14 @@ class Simulador:
                  font=("Segoe UI", 9, "bold"),
                  bg=BG, fg=ACCENT_2).pack(anchor="w")
 
-        self.campo_w = 1100
-        self.campo_h = 430
+        sh = self.root.winfo_screenheight()
+        sw = self.root.winfo_screenwidth()
+        fixed_h = 480  # altura estimada dos outros elementos da UI
+        available_h = max(180, sh - fixed_h)
+        available_w = max(400, sw - self._NARR_W - 72)
+        ratio = 1100 / 430
+        self.campo_h = min(available_h, int(available_w / ratio), 430)
+        self.campo_w = int(self.campo_h * ratio)
         holder = tk.Frame(wrapper, bg=BG_CARD, padx=6, pady=6)
         holder.pack(pady=(4, 0))
         self.canvas_campo = tk.Canvas(
