@@ -1,0 +1,96 @@
+KickForm is a unique platform that allows football fans to predict individual results without mathematical skills. It’s a statistical model, developed by physics professor Andreas Heuer, aimed at creating a forecasting program that would produce accurate, repeatable, and highly profitable football predictions.
+
+Data is taken from KickForm and compared to bookmakers' odds to find value. Its success has been revolutionary, with a proven track record yielding results even more accurate than those of many mainstream bookmakers.
+
+
+Table of Contents Heading
+Explore this page with our Table of Contents
+Table of Contents Toggle Icon
+How KickForm Works: 7-Step Process
+KickForm, at its core, is broken down into seven steps. Now, you don’t need to have a maths degree to understand how it works, but for those of you who want a look under the hood, here’s how we do it.
+
+Step 1: Determine Home Advantage
+We start by determining the advantage the home team has in the game. Once we have this, all other metrics fall into place, allowing us to create the most logical result for the match.
+
+This is the formula:
+
+Home advantage = c1 (home advantage of the last three years) + c2 (home advantage of the current season)
+
+On average, home teams tend to score more (Statistics: 1.66 goals for home and 1.20 for away).
+
+Step 2: Calculating the Number of Goals per Match
+Next is determining the average number of goals scored per match. This considers all teams in the league.
+
+Typically, three goals are scored in a football match. However, for the sake of precision, the number of goals has increased over time and now lies at 3.13 in the Bundesliga and 2.93 in the English Premier League.
+
+Step 3: Calculating the Performance Level and Expected Goal Difference
+The formulas below calculate the difference between the performance level and the expected goals.
+
+Performance level = c1 X1 + c2 X2 + c3 X3 + c4 X4
+X1 = mean goalscoring difference (GCD) of the previous season, weighting of the last three years (0.5, 0.35, 0.15)
+X2 = goalscoring difference of the current season
+X3 = current fitness value (mean goalscoring difference, weighted with a decreasing exponential function)
+X4 = logarithms market value
+
+Goalscoring opportunities are much more informative for forecasting than actual goals. Good teams display a slightly better conversion of chances. The prediction becomes a lot more accurate if the goalscoring opportunities of the current and the past season, as well as the market value, are taken into account. By doing so, correlations of up to 0.67 are made, resulting in a 67% rate of correct predictions.
+
+Step 4: Determining the Exceptionality of Promoted Teams
+The performance of promoted teams is surprisingly strong. Obvious deviations from the lower half of the table (goal difference: -13 +/- 8) are therefore quite rare.
+
+Step 5: Calculating the Expected Number of Goals
+For every match, the total number of expected goals is similar; however, some high-performing teams score more goals than average.
+
+Number of goals = c1 X1 + c2 X2 + mean goals per match
+X1 = total of goalscoring opportunities in the past, with identical weighting parameters of the last 3 years
+X2 = effective total of goalscoring opportunities in the current season. Here, the total of goalscoring opportunities of all teams is subtracted so that the total number of goalscoring opportunities, compared to the average, is determined.
+
+Step 6: Calculating Expected Goals
+We assess the calculated goal difference and the total goals for the respective match.
+
+Step 7: Matchday Weighting Factor
+Weighting factors for the respective matchday or for the stage of the season are completed and applied.
+
+Forecasting Results with the KickForm Football Formula™
+To further explore how our KickForm Football Formula™ works, we’ve taken a real-world example from a game between Liverpool and Manchester United in the English Premier League.
+
+Prediction after using the KickForm Football Formula™: 1.429:1.022
+
+Obviously, no match results in a ratio of 1.429:1.022 goals, but this is the average number of goals scored by both teams. With the help of the Poisson Distribution, we can calculate these figures for the distribution of 100% using a row of results for each team.
+
+The Poisson Formula itself is as follows: P(x; μ) = (e-μ) (μx) / x!
+
+The following Poisson Distribution has been calculated from the above example:
+
+Goals	0	1	2	3	4	5
+Liverpool	23.95 %	34.23 %	24.46 %	11.65 %	4.16 %	1.19 %
+Manchester United	35.99 %	36.78 %	18.79 %	6.40 %	1.64 %	0.33 %
+This example shows that:
+
+Liverpool have a 23.95% probability of scoring no goals, a 34.23% probability of scoring one goal and a 24.46% probability of scoring two goals.
+
+Manchester United, on the other hand, have a 35.99% probability of scoring no goals, a 36.78% probability of scoring one goal, and an 18.79% chance of scoring two goals.
+
+The most likely result, therefore, is 1:1.
+
+This result will occur with a probability of 12.59%.
+
+Creating Your Own KickForm Football Formula
+KickForm goes a step further and offers each user the option to customise the formula by using a different weighting according to personal predictions. As a result, football fans can, even without in-depth knowledge of mathematics, develop their own forecasts on a scientific basis.
+
+Registered users can choose factors such as market value, possession, home advantage, favourite team or away weakness. It’s designed to allow the Average Joe to become a maths wiz and their own betting expert with as much or as little input as they want.
+
+Example: Weighting Factor Home Advantage
+
+Let’s assume that Liverpool scores a high percentage of their total goals at home, and you want to weight this market towards that. You set the line at +0.6, and therefore, the result changes to 2.029 – 1.022. This means the most likely results change from 1-1 to 2-1, in favour of a Liverpool win.
+
+How Was KickForm Born?
+The idea for KickForm developed at a Stammtisch (in Germany, this is where a group of friends meet regularly at a pub). Jan was looking for a way to improve his ranking in the collective betting pool and dreamed of a ‘football formula' that would give him valuable tips to place better bets.
+
+This also piqued the interest of Jörg, who thought it would be exciting to develop an algorithm that would allow for scientifically sound predictions of football matches. As a result, the idea for an online platform was born: one that could not only offer a football formula to predict matches but also allow each user to create their own formula, directly incorporating knowledge of goalscoring opportunities, possession, market value, home streaks, and so on.
+
+Jan and Jörg then approached physics professor Andreas Heuer, author of the book Der Perfekte Tipp (The Perfect Bet) and an established expert in the field of football predictions. He immediately liked the idea and lent his support to the founders as an academic advisor.
+
+Professor Heuer was approached specifically because his predictive model for football matches has been proven to be exceptionally accurate. In fact, compared to the odds of bookmakers, it was found that Heuer’s predictions were better than those of many of the top bookies you see online today. Mightily impressive stuff, we’re sure you’ll agree.
+
+Meet the Team Powering KickForm
+It’s impossible to predict how a football match will end with complete certainty. It’s one of the many reasons why this sport is so enthralling, and exactly why it is such enormous fun to analyse matches or to place a bet. The combined expertise of Professor Heuer and the team has developed a method for drawing accurate conclusions from statistics and understanding phenomena such as streaks in home games and the longevity of football managers in their roles.
