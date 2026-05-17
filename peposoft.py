@@ -7,7 +7,7 @@ from ctypes import windll
 from tkinter import ttk, messagebox
 
 # ----------------------------------------------------------------------
-# ÁUDIO (MCI / winmm — toca MP3, alias único interrompe o áudio anterior)
+# ÁUDIO
 # ----------------------------------------------------------------------
 SFX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sfx")
 _SFX_ALIAS = "peposoft_sfx"
@@ -106,13 +106,12 @@ def probabilidades(f1, f2):
 
 
 # ----------------------------------------------------------------------
-# KICKFORM — estatísticas dos últimos 10 jogos (resultados times.xlsx)
+# KICKFORM
 # ----------------------------------------------------------------------
 XLSX_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "resultados times", "resultados times.xlsx",
 )
-# Referências do KickForm (Bundesliga ~ 1.66 em casa, 1.20 fora)
 LIGA_HOME_AVG = 1.66
 LIGA_AWAY_AVG = 1.20
 
@@ -126,7 +125,6 @@ def _norm(s):
 
 
 def _carregar_kickform():
-    """Lê o xlsx, retorna (stats_por_time, media_gols_casa, media_gols_fora)."""
     try:
         import openpyxl
     except ImportError:
@@ -193,7 +191,6 @@ KICKFORM, LIGA_HOME_OBS, LIGA_AWAY_OBS = _carregar_kickform()
 
 
 def _sample_poisson(mu):
-    """Amostragem direta de Poisson (algoritmo de Knuth)."""
     if mu <= 0:
         return 0
     L = math.exp(-mu)
@@ -207,10 +204,6 @@ def _sample_poisson(mu):
 
 
 def sortear_minutos_gols(n_a, n_b):
-    """
-    Distribui n_a + n_b gols entre os 90 minutos sem colisão, com leve viés
-    pro 2º tempo (peso 1.15 vs 1.0) — reflete a distribuição real do futebol.
-    """
     if n_a + n_b == 0:
         return [], []
     pesos = [1.0 if m < 46 else 1.15 for m in range(1, 91)]
@@ -225,11 +218,6 @@ def sortear_minutos_gols(n_a, n_b):
 
 
 def xg_partida(time_casa, time_fora):
-    """
-    KickForm: xG da partida casa × fora.
-    Combina ataque/defesa específicos de mando × visitante das últimas 10
-    partidas, com fallback baseado em 'forca' se o time não tem dados.
-    """
     h = KICKFORM.get(_norm(time_casa))
     a = KICKFORM.get(_norm(time_fora))
     if h and a:
@@ -237,7 +225,6 @@ def xg_partida(time_casa, time_fora):
         def_h = h["defesa_casa"] if h["defesa_casa"] is not None else h["defesa"]
         atk_a = a["ataque_fora"] if a["ataque_fora"] is not None else a["ataque"]
         def_a = a["defesa_fora"] if a["defesa_fora"] is not None else a["defesa"]
-        # Fatores de força relativos à média OBSERVADA da liga
         f_atk_h = atk_h / LIGA_HOME_OBS
         f_def_a = def_a / LIGA_HOME_OBS
         f_atk_a = atk_a / LIGA_AWAY_OBS
@@ -262,7 +249,6 @@ def _poisson(k, mu):
 
 
 def chances_resultado(xg_h, xg_a, max_g=8):
-    """Probabilidade de vitória/empate via produto de Poisson independente."""
     p_h = p_e = p_a = 0.0
     for gh in range(max_g):
         for ga in range(max_g):
@@ -280,30 +266,27 @@ def chances_resultado(xg_h, xg_a, max_g=8):
 # UI
 # ----------------------------------------------------------------------
 class Simulador:
+    _PLAYER_R = 9
+    _NARR_W   = 400
+
     def __init__(self, root):
         self.root = root
         self.root.title("⚽  Simulador de Seleções")
-        self.root.geometry("820x980")
         self.root.configure(bg=BG)
-        self.root.minsize(780, 900)
+        self.root.attributes('-fullscreen', True)
+        self.root.bind('<Escape>', lambda e: self.root.attributes('-fullscreen', False))
 
-        self.simulando = False
+        self.simulando    = False
         self.animando_gol = False
-        self.atk_atual = "a"
-        self.gols_a = 0
-        self.gols_b = 0
-        self.minuto = 0
-        self.stats = {"posse_a": 0, "posse_b": 0, "chutes_a": 0, "chutes_b": 0}
+        self.atk_atual    = "a"
+        self.gols_a       = 0
+        self.gols_b       = 0
+        self.minuto       = 0
+        self.stats        = {"posse_a": 0, "posse_b": 0, "chutes_a": 0, "chutes_b": 0}
 
         self._estilo()
         self._cabecalho()
-        self._seletor()
-        self._barra_forca()
-        self._placar()
-        self._campo()
-        self._narracao()
-        self._botoes()
-
+        self._build_body()
         self._atualizar_preview()
 
     # ---------- estilo ttk ----------
@@ -331,128 +314,161 @@ class Simulador:
 
     # ---------- cabeçalho ----------
     def _cabecalho(self):
-        topo = tk.Frame(self.root, bg=BG)
-        topo.pack(fill="x", pady=(18, 6))
+        topo = tk.Frame(self.root, bg=BG_CARD)
+        topo.pack(fill="x")
+
+        inner = tk.Frame(topo, bg=BG_CARD)
+        inner.pack(fill="x", padx=24, pady=14)
 
         tk.Label(
-            topo, text="⚽  SIMULADOR DE SELEÇÕES",
-            font=("Segoe UI", 22, "bold"),
-            bg=BG, fg=ACCENT,
-        ).pack()
+            inner, text="⚽  SIMULADOR DE SELEÇÕES",
+            font=("Segoe UI", 24, "bold"),
+            bg=BG_CARD, fg=ACCENT,
+        ).pack(side="left")
 
         tk.Label(
-            topo, text="Escolha as seleções e veja a partida acontecer minuto a minuto",
-            font=("Segoe UI", 10),
-            bg=BG, fg=TXT_MUTED,
-        ).pack(pady=(2, 0))
+            inner, text="Escolha as seleções e veja a partida acontecer minuto a minuto",
+            font=("Segoe UI", 11),
+            bg=BG_CARD, fg=TXT_MUTED,
+        ).pack(side="left", padx=(20, 0), pady=(5, 0))
+
+        tk.Label(
+            inner, text="ESC · sair do ecrã completo",
+            font=("Segoe UI", 9),
+            bg=BG_CARD, fg=TXT_MUTED,
+        ).pack(side="right")
+
+        tk.Frame(topo, bg=ACCENT_2, height=2).pack(fill="x")
+
+    # ---------- corpo principal (2 colunas) ----------
+    def _build_body(self):
+        body = tk.Frame(self.root, bg=BG)
+        body.pack(fill="both", expand=True)
+
+        # Painel direito — narração (largura fixa)
+        right = tk.Frame(body, bg=BG_CARD, width=self._NARR_W)
+        right.pack(side="right", fill="y")
+        right.pack_propagate(False)
+        self._narracao(right)
+
+        tk.Frame(body, bg="#1e2d42", width=1).pack(side="right", fill="y")
+
+        # Painel esquerdo — jogo
+        left = tk.Frame(body, bg=BG)
+        left.pack(side="left", fill="both", expand=True)
+        self._seletor(left)
+        self._barra_forca(left)
+        self._placar(left)
+        self._campo(left)
+        self._botoes(left)
 
     # ---------- seletor de times ----------
-    def _seletor(self):
-        card = tk.Frame(self.root, bg=BG_CARD, padx=18, pady=14)
-        card.pack(fill="x", padx=24, pady=10)
+    def _seletor(self, parent):
+        card = tk.Frame(parent, bg=BG_CARD, padx=24, pady=16)
+        card.pack(fill="x", padx=24, pady=(12, 6))
 
         nomes = list(selecoes.keys())
 
         col1 = tk.Frame(card, bg=BG_CARD)
-        col1.pack(side="left", expand=True, fill="x", padx=(0, 8))
+        col1.pack(side="left", padx=(0, 8))
         tk.Label(col1, text="MANDANTE", font=("Segoe UI", 9, "bold"),
                  bg=BG_CARD, fg=ACCENT_2).pack(anchor="w")
         self.combo1 = ttk.Combobox(col1, values=nomes, font=("Segoe UI", 12),
-                                   state="readonly", style="Mod.TCombobox")
-        self.combo1.pack(fill="x", pady=(4, 0))
+                                   state="readonly", style="Mod.TCombobox", width=28)
+        self.combo1.pack(pady=(4, 0))
         self.combo1.current(0)
         self.combo1.bind("<<ComboboxSelected>>", lambda e: self._atualizar_preview())
 
-        tk.Label(card, text="×", font=("Segoe UI", 22, "bold"),
-                 bg=BG_CARD, fg=ACCENT).pack(side="left", padx=10)
+        tk.Label(card, text="×", font=("Segoe UI", 24, "bold"),
+                 bg=BG_CARD, fg=ACCENT).pack(side="left", padx=20)
 
         col2 = tk.Frame(card, bg=BG_CARD)
-        col2.pack(side="left", expand=True, fill="x", padx=(8, 0))
+        col2.pack(side="left", padx=(8, 0))
         tk.Label(col2, text="VISITANTE", font=("Segoe UI", 9, "bold"),
-                 bg=BG_CARD, fg=ACCENT_2).pack(anchor="e")
+                 bg=BG_CARD, fg=ACCENT_2).pack(anchor="w")
         self.combo2 = ttk.Combobox(col2, values=nomes, font=("Segoe UI", 12),
-                                   state="readonly", style="Mod.TCombobox")
-        self.combo2.pack(fill="x", pady=(4, 0))
+                                   state="readonly", style="Mod.TCombobox", width=28)
+        self.combo2.pack(pady=(4, 0))
         self.combo2.current(1)
         self.combo2.bind("<<ComboboxSelected>>", lambda e: self._atualizar_preview())
 
     # ---------- barra de probabilidade ----------
-    def _barra_forca(self):
-        wrapper = tk.Frame(self.root, bg=BG)
+    def _barra_forca(self, parent):
+        wrapper = tk.Frame(parent, bg=BG)
         wrapper.pack(fill="x", padx=24, pady=(2, 6))
 
         legenda = tk.Frame(wrapper, bg=BG)
         legenda.pack(fill="x")
-        self.lbl_prob_a = tk.Label(legenda, text="", font=("Segoe UI", 9, "bold"),
+        self.lbl_prob_a = tk.Label(legenda, text="", font=("Segoe UI", 10, "bold"),
                                    bg=BG, fg=TXT)
         self.lbl_prob_a.pack(side="left")
-        self.lbl_prob_b = tk.Label(legenda, text="", font=("Segoe UI", 9, "bold"),
+        self.lbl_prob_b = tk.Label(legenda, text="", font=("Segoe UI", 10, "bold"),
                                    bg=BG, fg=TXT)
         self.lbl_prob_b.pack(side="right")
 
-        self.canvas_barra = tk.Canvas(wrapper, height=10, bg=BG_CARD,
+        self.canvas_barra = tk.Canvas(wrapper, height=12, bg=BG_CARD,
                                       highlightthickness=0)
         self.canvas_barra.pack(fill="x", pady=(4, 0))
 
-        self.lbl_xg = tk.Label(wrapper, text="", font=("Segoe UI", 9),
+        self.lbl_xg = tk.Label(wrapper, text="", font=("Segoe UI", 10),
                                bg=BG, fg=TXT_MUTED)
         self.lbl_xg.pack(pady=(4, 0))
 
     # ---------- placar ----------
-    def _placar(self):
-        self.card_placar = tk.Frame(self.root, bg=BG_CARD_2, padx=18, pady=18)
-        self.card_placar.pack(fill="x", padx=24, pady=(10, 6))
+    def _placar(self, parent):
+        self.card_placar = tk.Frame(parent, bg=BG_CARD_2, padx=24, pady=18)
+        self.card_placar.pack(fill="x", padx=24, pady=(6, 6))
 
         self.frame_a = tk.Frame(self.card_placar, bg=BG_CARD_2)
         self.frame_a.pack(side="left", expand=True)
-        self.flag_a = tk.Label(self.frame_a, text="🏳️", font=("Segoe UI Emoji", 38),
+        self.flag_a = tk.Label(self.frame_a, text="🏳️", font=("Segoe UI Emoji", 44),
                                bg=BG_CARD_2, fg=TXT)
         self.flag_a.pack()
-        self.nome_a = tk.Label(self.frame_a, text="—", font=("Segoe UI", 12, "bold"),
+        self.nome_a = tk.Label(self.frame_a, text="—", font=("Segoe UI", 13, "bold"),
                                bg=BG_CARD_2, fg=TXT)
         self.nome_a.pack()
 
         meio = tk.Frame(self.card_placar, bg=BG_CARD_2)
-        meio.pack(side="left", padx=24)
-        self.lbl_minuto = tk.Label(meio, text="00'", font=("Segoe UI", 11, "bold"),
+        meio.pack(side="left", padx=40)
+        self.lbl_minuto = tk.Label(meio, text="00'", font=("Segoe UI", 13, "bold"),
                                    bg=BG_CARD_2, fg=ACCENT)
         self.lbl_minuto.pack()
         self.lbl_placar = tk.Label(meio, text="0  :  0",
-                                   font=("Segoe UI", 36, "bold"),
+                                   font=("Segoe UI", 56, "bold"),
                                    bg=BG_CARD_2, fg=TXT)
         self.lbl_placar.pack()
         self.lbl_status = tk.Label(meio, text="aguardando início",
-                                   font=("Segoe UI", 9),
+                                   font=("Segoe UI", 10),
                                    bg=BG_CARD_2, fg=TXT_MUTED)
         self.lbl_status.pack()
         self.frame_meio = meio
 
         self.frame_b = tk.Frame(self.card_placar, bg=BG_CARD_2)
         self.frame_b.pack(side="left", expand=True)
-        self.flag_b = tk.Label(self.frame_b, text="🏳️", font=("Segoe UI Emoji", 38),
+        self.flag_b = tk.Label(self.frame_b, text="🏳️", font=("Segoe UI Emoji", 44),
                                bg=BG_CARD_2, fg=TXT)
         self.flag_b.pack()
-        self.nome_b = tk.Label(self.frame_b, text="—", font=("Segoe UI", 12, "bold"),
+        self.nome_b = tk.Label(self.frame_b, text="—", font=("Segoe UI", 13, "bold"),
                                bg=BG_CARD_2, fg=TXT)
         self.nome_b.pack()
 
     # ---------- campo 2D ----------
-    def _campo(self):
-        wrapper = tk.Frame(self.root, bg=BG)
+    def _campo(self, parent):
+        wrapper = tk.Frame(parent, bg=BG)
         wrapper.pack(fill="x", padx=24, pady=(6, 6))
 
         tk.Label(wrapper, text="CAMPO",
                  font=("Segoe UI", 9, "bold"),
                  bg=BG, fg=ACCENT_2).pack(anchor="w")
 
-        self.campo_w = 720
-        self.campo_h = 300
+        self.campo_w = 1100
+        self.campo_h = 430
         holder = tk.Frame(wrapper, bg=BG_CARD, padx=6, pady=6)
         holder.pack(pady=(4, 0))
         self.canvas_campo = tk.Canvas(
             holder, width=self.campo_w, height=self.campo_h,
-            bg="#2d7a3e", highlightthickness=2,
-            highlightbackground="black",
+            bg="#1a5c2a", highlightthickness=2,
+            highlightbackground="#0d3d1a",
         )
         self.canvas_campo.pack()
 
@@ -464,51 +480,54 @@ class Simulador:
         c = self.canvas_campo
         w, h = self.campo_w, self.campo_h
         c.delete("linha")
-        m = 12
-        for i in range(8):
-            cor = "#286f37" if i % 2 == 0 else "#2d7a3e"
-            c.create_rectangle(m + i*(w-2*m)/8, m,
-                               m + (i+1)*(w-2*m)/8, h-m,
+        m = 16
+        n_stripes = 10
+        stripe_w = (w - 2 * m) / n_stripes
+        for i in range(n_stripes):
+            cor = "#1d6632" if i % 2 == 0 else "#1a5c2a"
+            c.create_rectangle(m + i * stripe_w, m,
+                               m + (i + 1) * stripe_w, h - m,
                                fill=cor, outline="", tags="linha")
-        c.create_rectangle(m, m, w-m, h-m,
+        c.create_rectangle(m, m, w - m, h - m,
                            outline="white", width=2, tags="linha")
-        c.create_line(w/2, m, w/2, h-m, fill="white", width=2, tags="linha")
-        c.create_oval(w/2-38, h/2-38, w/2+38, h/2+38,
+        c.create_line(w / 2, m, w / 2, h - m, fill="white", width=2, tags="linha")
+        c.create_oval(w / 2 - 55, h / 2 - 55, w / 2 + 55, h / 2 + 55,
                       outline="white", width=2, tags="linha")
-        c.create_oval(w/2-3, h/2-3, w/2+3, h/2+3,
+        c.create_oval(w / 2 - 4, h / 2 - 4, w / 2 + 4, h / 2 + 4,
                       fill="white", outline="", tags="linha")
-        pa_w, pa_h = 70, 140
-        c.create_rectangle(m, h/2-pa_h/2, m+pa_w, h/2+pa_h/2,
+        pa_w, pa_h = 100, 200
+        c.create_rectangle(m, h / 2 - pa_h / 2, m + pa_w, h / 2 + pa_h / 2,
                            outline="white", width=2, tags="linha")
-        c.create_rectangle(w-m-pa_w, h/2-pa_h/2, w-m, h/2+pa_h/2,
+        c.create_rectangle(w - m - pa_w, h / 2 - pa_h / 2, w - m, h / 2 + pa_h / 2,
                            outline="white", width=2, tags="linha")
-        ga_w, ga_h = 26, 70
-        c.create_rectangle(m, h/2-ga_h/2, m+ga_w, h/2+ga_h/2,
+        ga_w, ga_h = 38, 100
+        c.create_rectangle(m, h / 2 - ga_h / 2, m + ga_w, h / 2 + ga_h / 2,
                            outline="white", width=2, tags="linha")
-        c.create_rectangle(w-m-ga_w, h/2-ga_h/2, w-m, h/2+ga_h/2,
+        c.create_rectangle(w - m - ga_w, h / 2 - ga_h / 2, w - m, h / 2 + ga_h / 2,
                            outline="white", width=2, tags="linha")
-        gh = 50
-        c.create_rectangle(m-8, h/2-gh/2, m, h/2+gh/2,
-                           outline="white", fill="#dddddd", width=1, tags="linha")
-        c.create_rectangle(w-m, h/2-gh/2, w-m+8, h/2+gh/2,
-                           outline="white", fill="#dddddd", width=1, tags="linha")
+        gh = 70
+        c.create_rectangle(m - 10, h / 2 - gh / 2, m, h / 2 + gh / 2,
+                           outline="white", fill="#cccccc", width=1, tags="linha")
+        c.create_rectangle(w - m, h / 2 - gh / 2, w - m + 10, h / 2 + gh / 2,
+                           outline="white", fill="#cccccc", width=1, tags="linha")
 
     def _formacao(self, lado):
         w, h = self.campo_w, self.campo_h
         if lado == "a":
-            gk_x, def_x, mid_x, fwd_x = w*0.06, w*0.20, w*0.34, w*0.44
+            gk_x, def_x, mid_x, fwd_x = w * 0.06, w * 0.20, w * 0.34, w * 0.44
         else:
-            gk_x, def_x, mid_x, fwd_x = w*0.94, w*0.80, w*0.66, w*0.56
+            gk_x, def_x, mid_x, fwd_x = w * 0.94, w * 0.80, w * 0.66, w * 0.56
         return [
-            (gk_x,  h*0.50),
-            (def_x, h*0.18), (def_x, h*0.40),
-            (def_x, h*0.60), (def_x, h*0.82),
-            (mid_x, h*0.20), (mid_x, h*0.42),
-            (mid_x, h*0.58), (mid_x, h*0.80),
-            (fwd_x, h*0.36), (fwd_x, h*0.64),
+            (gk_x,  h * 0.50),
+            (def_x, h * 0.18), (def_x, h * 0.40),
+            (def_x, h * 0.60), (def_x, h * 0.82),
+            (mid_x, h * 0.20), (mid_x, h * 0.42),
+            (mid_x, h * 0.58), (mid_x, h * 0.80),
+            (fwd_x, h * 0.36), (fwd_x, h * 0.64),
         ]
 
     def _criar_jogadores(self):
+        r = self._PLAYER_R
         self.flash_overlay = self.canvas_campo.create_rectangle(
             0, 0, self.campo_w, self.campo_h,
             fill="#ffff66", outline="", state="hidden",
@@ -518,35 +537,34 @@ class Simulador:
         self.pos_base_b = self._formacao("b")
         self.jogadores_a = []
         self.jogadores_b = []
-        r = 7
         for x, y in self.pos_base_a:
             d = self.canvas_campo.create_oval(
-                x-r, y-r, x+r, y+r,
+                x - r, y - r, x + r, y + r,
                 fill="white", outline="black", width=2, tags="jogador",
             )
             self.jogadores_a.append(d)
         for x, y in self.pos_base_b:
             d = self.canvas_campo.create_oval(
-                x-r, y-r, x+r, y+r,
+                x - r, y - r, x + r, y + r,
                 fill="white", outline="black", width=2, tags="jogador",
             )
             self.jogadores_b.append(d)
-        self.bola_pos = [self.campo_w/2, self.campo_h/2]
+        self.bola_pos = [self.campo_w / 2, self.campo_h / 2]
         self.bola = self.canvas_campo.create_oval(
-            self.bola_pos[0]-5, self.bola_pos[1]-5,
-            self.bola_pos[0]+5, self.bola_pos[1]+5,
-            fill="white", outline="black", width=1, tags="bola",
+            self.bola_pos[0] - 6, self.bola_pos[1] - 6,
+            self.bola_pos[0] + 6, self.bola_pos[1] + 6,
+            fill="white", outline="#333333", width=2, tags="bola",
         )
 
     def _criar_botao_play(self):
-        cx, cy = self.campo_w/2, self.campo_h/2
-        r = 34
+        cx, cy = self.campo_w / 2, self.campo_h / 2
+        r = 44
         self.play_bg = self.canvas_campo.create_oval(
-            cx-r, cy-r, cx+r, cy+r,
+            cx - r, cy - r, cx + r, cy + r,
             fill="#000000", outline="white", width=3, tags="play_btn",
         )
         self.play_tri = self.canvas_campo.create_polygon(
-            cx-11, cy-15, cx-11, cy+15, cx+17, cy,
+            cx - 13, cy - 18, cx - 13, cy + 18, cx + 20, cy,
             fill="white", outline="white", tags="play_btn",
         )
         self.canvas_campo.tag_bind("play_btn", "<Button-1>",
@@ -563,29 +581,29 @@ class Simulador:
         self.canvas_campo.itemconfig("play_btn", state=state)
 
     def _resetar_posicoes(self):
-        r = 7
+        r = self._PLAYER_R
         for dot, (x, y) in zip(self.jogadores_a, self.pos_base_a):
-            self.canvas_campo.coords(dot, x-r, y-r, x+r, y+r)
+            self.canvas_campo.coords(dot, x - r, y - r, x + r, y + r)
         for dot, (x, y) in zip(self.jogadores_b, self.pos_base_b):
-            self.canvas_campo.coords(dot, x-r, y-r, x+r, y+r)
-        self.bola_pos = [self.campo_w/2, self.campo_h/2]
+            self.canvas_campo.coords(dot, x - r, y - r, x + r, y + r)
+        self.bola_pos = [self.campo_w / 2, self.campo_h / 2]
         self.canvas_campo.coords(
             self.bola,
-            self.bola_pos[0]-5, self.bola_pos[1]-5,
-            self.bola_pos[0]+5, self.bola_pos[1]+5,
+            self.bola_pos[0] - 6, self.bola_pos[1] - 6,
+            self.bola_pos[0] + 6, self.bola_pos[1] + 6,
         )
 
     def _mover_jogador(self, dot, base, peso_ball=0.03):
-        r = 7
+        r = self._PLAYER_R
         x1, y1, x2, y2 = self.canvas_campo.coords(dot)
-        cx, cy = (x1+x2)/2, (y1+y2)/2
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
         bx, by = base
         bola_x, bola_y = self.bola_pos
         dx = (bx - cx) * 0.15 + (bola_x - cx) * peso_ball + random.uniform(-2.5, 2.5)
         dy = (by - cy) * 0.15 + (bola_y - cy) * peso_ball + random.uniform(-2.5, 2.5)
-        nx = max(14, min(self.campo_w-14, cx+dx))
-        ny = max(14, min(self.campo_h-14, cy+dy))
-        self.canvas_campo.coords(dot, nx-r, ny-r, nx+r, ny+r)
+        nx = max(14, min(self.campo_w - 14, cx + dx))
+        ny = max(14, min(self.campo_h - 14, cy + dy))
+        self.canvas_campo.coords(dot, nx - r, ny - r, nx + r, ny + r)
 
     def _animar_jogadores(self):
         if self.animando_gol:
@@ -600,17 +618,17 @@ class Simulador:
         target_y = self.campo_h / 2 + random.uniform(-70, 70)
         self.bola_pos[0] += (target_x - self.bola_pos[0]) * 0.10 + random.uniform(-5, 5)
         self.bola_pos[1] += (target_y - self.bola_pos[1]) * 0.10 + random.uniform(-4, 4)
-        self.bola_pos[0] = max(18, min(self.campo_w-18, self.bola_pos[0]))
-        self.bola_pos[1] = max(18, min(self.campo_h-18, self.bola_pos[1]))
+        self.bola_pos[0] = max(18, min(self.campo_w - 18, self.bola_pos[0]))
+        self.bola_pos[1] = max(18, min(self.campo_h - 18, self.bola_pos[1]))
         self.canvas_campo.coords(
             self.bola,
-            self.bola_pos[0]-5, self.bola_pos[1]-5,
-            self.bola_pos[0]+5, self.bola_pos[1]+5,
+            self.bola_pos[0] - 6, self.bola_pos[1] - 6,
+            self.bola_pos[0] + 6, self.bola_pos[1] + 6,
         )
 
     def _animar_gol(self, lado, cor):
         self.animando_gol = True
-        goal_x = self.campo_w - 14 if lado == "a" else 14
+        goal_x = self.campo_w - 16 if lado == "a" else 16
         goal_y = self.campo_h / 2
         self._mover_bola_ate(goal_x, goal_y, 12, lambda: self._flash_campo(cor))
 
@@ -625,46 +643,49 @@ class Simulador:
         self.bola_pos[1] += dy
         self.canvas_campo.coords(
             self.bola,
-            self.bola_pos[0]-5, self.bola_pos[1]-5,
-            self.bola_pos[0]+5, self.bola_pos[1]+5,
+            self.bola_pos[0] - 6, self.bola_pos[1] - 6,
+            self.bola_pos[0] + 6, self.bola_pos[1] + 6,
         )
-        self.root.after(28, lambda: self._mover_bola_ate(tx, ty, passos-1, callback))
+        self.root.after(40, lambda: self._mover_bola_ate(tx, ty, passos - 1, callback))
 
     def _flash_campo(self, cor, count=8):
         if count <= 0:
             self.canvas_campo.itemconfig(self.flash_overlay, state="hidden")
             self.animando_gol = False
-            self.bola_pos = [self.campo_w/2, self.campo_h/2]
+            self.bola_pos = [self.campo_w / 2, self.campo_h / 2]
             self.canvas_campo.coords(
                 self.bola,
-                self.bola_pos[0]-5, self.bola_pos[1]-5,
-                self.bola_pos[0]+5, self.bola_pos[1]+5,
+                self.bola_pos[0] - 6, self.bola_pos[1] - 6,
+                self.bola_pos[0] + 6, self.bola_pos[1] + 6,
             )
             return
         if count % 2 == 0:
             self.canvas_campo.itemconfig(self.flash_overlay, fill=cor, state="normal")
         else:
             self.canvas_campo.itemconfig(self.flash_overlay, state="hidden")
-        self.root.after(110, lambda: self._flash_campo(cor, count-1))
+        self.root.after(160, lambda: self._flash_campo(cor, count - 1))
 
-    # ---------- narração ----------
-    def _narracao(self):
-        wrapper = tk.Frame(self.root, bg=BG)
-        wrapper.pack(fill="both", expand=True, padx=24, pady=(6, 6))
+    # ---------- narração (painel direito) ----------
+    def _narracao(self, parent):
+        hdr = tk.Frame(parent, bg=BG_CARD_2, padx=16, pady=14)
+        hdr.pack(fill="x")
+        self.lbl_narracao_hdr = tk.Label(
+            hdr, text="📻  NARRAÇÃO AO VIVO",
+            font=("Segoe UI", 11, "bold"),
+            bg=BG_CARD_2, fg=ACCENT_2,
+        )
+        self.lbl_narracao_hdr.pack(side="left")
 
-        tk.Label(wrapper, text="NARRAÇÃO AO VIVO",
-                 font=("Segoe UI", 9, "bold"),
-                 bg=BG, fg=ACCENT_2).pack(anchor="w")
+        tk.Frame(parent, bg="#1e2d42", height=1).pack(fill="x")
 
-        caixa = tk.Frame(wrapper, bg=BG_CARD)
-        caixa.pack(fill="both", expand=True, pady=(4, 0))
+        caixa = tk.Frame(parent, bg=BG_CARD)
+        caixa.pack(fill="both", expand=True)
 
         self.txt_narracao = tk.Text(
             caixa, bg=BG_CARD, fg=TXT,
-            font=("Consolas", 10),
-            relief="flat", padx=12, pady=10,
+            font=("Consolas", 11),
+            relief="flat", padx=16, pady=12,
             wrap="word", state="disabled",
-            height=5,
         )
         self.txt_narracao.pack(side="left", fill="both", expand=True)
 
@@ -674,36 +695,36 @@ class Simulador:
         scroll.pack(side="right", fill="y")
         self.txt_narracao.config(yscrollcommand=scroll.set)
 
-        self.txt_narracao.tag_config("gol",   foreground=WIN, font=("Consolas", 10, "bold"))
-        self.txt_narracao.tag_config("apito", foreground=ACCENT, font=("Consolas", 10, "bold"))
+        self.txt_narracao.tag_config("gol",   foreground=WIN,   font=("Consolas", 11, "bold"))
+        self.txt_narracao.tag_config("apito", foreground=ACCENT, font=("Consolas", 11, "bold"))
 
     # ---------- botões ----------
-    def _botoes(self):
-        bar = tk.Frame(self.root, bg=BG)
-        bar.pack(fill="x", padx=24, pady=(4, 18))
+    def _botoes(self, parent):
+        bar = tk.Frame(parent, bg=BG)
+        bar.pack(fill="x", padx=24, pady=(6, 18))
 
         self.btn = tk.Button(
             bar, text="▶  SIMULAR PARTIDA",
-            font=("Segoe UI", 13, "bold"),
-            bg=ACCENT, fg="black", activebackground="#ffc46b",
-            activeforeground="black",
-            relief="flat", padx=22, pady=12,
+            font=("Segoe UI", 14, "bold"),
+            bg=ACCENT, fg="#0a0f1e", activebackground="#fbbf24",
+            activeforeground="#0a0f1e",
+            relief="flat", padx=28, pady=14,
             cursor="hand2",
             command=self.iniciar,
         )
-        self.btn.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self.btn.pack(side="left", padx=(0, 8))
 
         self.btn_resumo = tk.Button(
             bar, text="📊  Resumo",
-            font=("Segoe UI", 11, "bold"),
+            font=("Segoe UI", 12, "bold"),
             bg=BG_CARD_2, fg=TXT, activebackground=BG_CARD,
             activeforeground=TXT,
-            relief="flat", padx=18, pady=12,
+            relief="flat", padx=22, pady=14,
             cursor="hand2",
             command=self.mostrar_resumo,
             state="disabled",
         )
-        self.btn_resumo.pack(side="left", padx=(6, 0))
+        self.btn_resumo.pack(side="left")
 
     # ------------------------------------------------------------------
     # PREVIEW (pré-partida)
@@ -743,7 +764,7 @@ class Simulador:
         self.root.update_idletasks()
         self.canvas_barra.delete("all")
         w = self.canvas_barra.winfo_width() or 700
-        h = 10
+        h = 12
         cut1 = int(w * p_h)
         cut2 = int(w * (p_h + p_e))
         self.canvas_barra.create_rectangle(0, 0, cut1, h, fill=d1["cor"], outline="")
@@ -763,8 +784,6 @@ class Simulador:
             return
 
         self.xg_a, self.xg_b = xg_partida(t1, t2)
-        # Pré-amostra o placar final via Poisson (mantém a distribuição
-        # exatamente igual à previsão KickForm ao longo de muitas simulações)
         gols_a_total = _sample_poisson(self.xg_a)
         gols_b_total = _sample_poisson(self.xg_b)
         self.min_gols_a, self.min_gols_b = sortear_minutos_gols(
@@ -772,11 +791,11 @@ class Simulador:
         )
 
         self.simulando = True
-        self.btn.config(state="disabled", text="● AO VIVO",
-                        bg=LOSE, fg="white")
+        self.btn.config(state="disabled", text="● AO VIVO", bg=LOSE, fg="white")
         self.btn_resumo.config(state="disabled")
         self.combo1.config(state="disabled")
         self.combo2.config(state="disabled")
+        self.lbl_narracao_hdr.config(text="📻  AO VIVO", fg=LOSE)
 
         self.gols_a = 0
         self.gols_b = 0
@@ -793,7 +812,7 @@ class Simulador:
         self.txt_narracao.config(state="disabled")
 
         self._narrar(f"🏟️  Início de jogo: {t1} × {t2}", tag="apito")
-        self.root.after(450, self._tick)
+        self.root.after(645, self._tick)
 
     def _tick(self):
         if self.minuto >= 90:
@@ -808,7 +827,6 @@ class Simulador:
 
         t1, t2 = self.combo1.get(), self.combo2.get()
 
-        # Posse baseada na razão de xG (time mais perigoso fica com mais bola)
         posse_a = self.xg_a / (self.xg_a + self.xg_b)
         if random.random() < posse_a:
             self.stats["posse_a"] += 1
@@ -820,7 +838,6 @@ class Simulador:
         self.atk_atual = atk_lado
         self._animar_jogadores()
 
-        # Gols pré-determinados via Poisson(xG) no início do jogo
         if self.minuto in self.min_gols_a:
             self.stats["chutes_a"] += 1
             self._gol("a", t1)
@@ -834,7 +851,7 @@ class Simulador:
         elif random.random() < 0.12:
             self._narrar(f"  {self.minuto:02d}'  {random.choice(EVENTOS_NEUTROS)}")
 
-        delay = random.randint(70, 140)
+        delay = random.randint(100, 200)
         self.root.after(delay, self._tick)
 
     def _gol(self, lado, time):
@@ -849,6 +866,10 @@ class Simulador:
         self._animar_gol(lado, cor)
         play_sfx("gol efeito.mp3")
 
+        self.lbl_narracao_hdr.config(text="⚽  GOL!", fg=WIN)
+        self.root.after(2500, lambda: self.lbl_narracao_hdr.config(
+            text="📻  AO VIVO", fg=LOSE) if self.simulando else None)
+
         msg = f"⚽ {self.minuto:02d}'  {time.upper()} — {random.choice(NARRACOES_GOL)}"
         self._narrar(msg, tag="gol")
 
@@ -861,7 +882,7 @@ class Simulador:
                 w.config(bg=cor)
             except tk.TclError:
                 pass
-        self.root.after(220, self._restaurar_placar)
+        self.root.after(315, self._restaurar_placar)
 
     def _restaurar_placar(self):
         widgets = [self.card_placar, self.frame_a, self.frame_b, self.frame_meio,
@@ -888,8 +909,8 @@ class Simulador:
             self._narrar(f"🤝 Empate em {self.gols_a} a {self.gols_b}.", tag="apito")
 
         self.simulando = False
-        self.btn.config(state="normal", text="▶  SIMULAR DE NOVO",
-                        bg=ACCENT, fg="black")
+        self.lbl_narracao_hdr.config(text="📻  NARRAÇÃO AO VIVO", fg=ACCENT_2)
+        self.btn.config(state="normal", text="▶  SIMULAR DE NOVO", bg=ACCENT, fg="#0a0f1e")
         self.btn_resumo.config(state="normal")
         self.combo1.config(state="readonly")
         self.combo2.config(state="readonly")
