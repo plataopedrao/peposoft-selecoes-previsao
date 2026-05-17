@@ -7,7 +7,7 @@ from ctypes import windll
 from tkinter import ttk, messagebox
 
 # ----------------------------------------------------------------------
-# ÁUDIO
+# ÁUDIO (MCI / winmm — toca MP3, alias único interrompe o áudio anterior)
 # ----------------------------------------------------------------------
 SFX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sfx")
 _SFX_ALIAS = "peposoft_sfx"
@@ -106,12 +106,13 @@ def probabilidades(f1, f2):
 
 
 # ----------------------------------------------------------------------
-# KICKFORM
+# KICKFORM — estatísticas dos últimos 10 jogos (resultados times.xlsx)
 # ----------------------------------------------------------------------
 XLSX_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "resultados times", "resultados times.xlsx",
 )
+# Referências do KickForm (Bundesliga ~ 1.66 em casa, 1.20 fora)
 LIGA_HOME_AVG = 1.66
 LIGA_AWAY_AVG = 1.20
 
@@ -125,12 +126,13 @@ def _norm(s):
 
 
 def _carregar_kickform():
+    """Lê o xlsx e retorna {nome_normalizado: stats} dos últimos 10 jogos."""
     try:
         import openpyxl
     except ImportError:
-        return {}, LIGA_HOME_AVG, LIGA_AWAY_AVG
+        return {}
     if not os.path.isfile(XLSX_PATH):
-        return {}, LIGA_HOME_AVG, LIGA_AWAY_AVG
+        return {}
     try:
         wb = openpyxl.load_workbook(XLSX_PATH, data_only=True, read_only=True)
         ws = wb.active
@@ -159,18 +161,10 @@ def _carregar_kickform():
             jogos.setdefault(sel, []).append((pro, contra, casa))
         wb.close()
         stats = {}
-        home_pro_total = home_n = away_pro_total = away_n = 0
         for nome, lst in jogos.items():
             n = len(lst)
             casa = [(p, c) for p, c, h in lst if h]
             fora = [(p, c) for p, c, h in lst if not h]
-            for p, c, h in lst:
-                if h:
-                    home_pro_total += p
-                    home_n += 1
-                else:
-                    away_pro_total += p
-                    away_n += 1
             stats[nome] = {
                 "n": n,
                 "ataque": sum(p for p, _, _ in lst) / n,
@@ -180,44 +174,20 @@ def _carregar_kickform():
                 "ataque_fora": (sum(p for p, _ in fora) / len(fora)) if fora else None,
                 "defesa_fora": (sum(c for _, c in fora) / len(fora)) if fora else None,
             }
-        media_casa = home_pro_total / home_n if home_n else LIGA_HOME_AVG
-        media_fora = away_pro_total / away_n if away_n else LIGA_AWAY_AVG
-        return stats, media_casa, media_fora
+        return stats
     except Exception:
-        return {}, LIGA_HOME_AVG, LIGA_AWAY_AVG
+        return {}
 
 
-KICKFORM, LIGA_HOME_OBS, LIGA_AWAY_OBS = _carregar_kickform()
-
-
-def _sample_poisson(mu):
-    if mu <= 0:
-        return 0
-    L = math.exp(-mu)
-    k = 0
-    p = 1.0
-    while True:
-        k += 1
-        p *= random.random()
-        if p <= L:
-            return k - 1
-
-
-def sortear_minutos_gols(n_a, n_b):
-    if n_a + n_b == 0:
-        return [], []
-    pesos = [1.0 if m < 46 else 1.15 for m in range(1, 91)]
-    candidatos = list(range(1, 91))
-    minutos = []
-    for _ in range(min(n_a + n_b, 90)):
-        idx = random.choices(range(len(candidatos)), weights=pesos, k=1)[0]
-        minutos.append(candidatos.pop(idx))
-        pesos.pop(idx)
-    random.shuffle(minutos)
-    return sorted(minutos[:n_a]), sorted(minutos[n_a:n_a + n_b])
+KICKFORM = _carregar_kickform()
 
 
 def xg_partida(time_casa, time_fora):
+    """
+    KickForm: xG da partida casa × fora.
+    Combina ataque/defesa específicos de mando × visitante das últimas 10
+    partidas, com fallback baseado em 'forca' se o time não tem dados.
+    """
     h = KICKFORM.get(_norm(time_casa))
     a = KICKFORM.get(_norm(time_fora))
     if h and a:
@@ -225,18 +195,19 @@ def xg_partida(time_casa, time_fora):
         def_h = h["defesa_casa"] if h["defesa_casa"] is not None else h["defesa"]
         atk_a = a["ataque_fora"] if a["ataque_fora"] is not None else a["ataque"]
         def_a = a["defesa_fora"] if a["defesa_fora"] is not None else a["defesa"]
-        f_atk_h = atk_h / LIGA_HOME_OBS
-        f_def_a = def_a / LIGA_HOME_OBS
-        f_atk_a = atk_a / LIGA_AWAY_OBS
-        f_def_h = def_h / LIGA_AWAY_OBS
-        xg_h = f_atk_h * f_def_a * LIGA_HOME_OBS
-        xg_a = f_atk_a * f_def_h * LIGA_AWAY_OBS
+        # Fatores de força relativos à média da liga
+        f_atk_h = atk_h / LIGA_HOME_AVG
+        f_def_a = def_a / LIGA_HOME_AVG
+        f_atk_a = atk_a / LIGA_AWAY_AVG
+        f_def_h = def_h / LIGA_AWAY_AVG
+        xg_h = f_atk_h * f_def_a * LIGA_HOME_AVG
+        xg_a = f_atk_a * f_def_h * LIGA_AWAY_AVG
     else:
         f1 = selecoes[time_casa]["forca"]
         f2 = selecoes[time_fora]["forca"]
         diff = (f1 - f2) / 40.0
-        xg_h = LIGA_HOME_OBS * (1.0 + diff)
-        xg_a = LIGA_AWAY_OBS * (1.0 - diff)
+        xg_h = LIGA_HOME_AVG * (1.0 + diff)
+        xg_a = LIGA_AWAY_AVG * (1.0 - diff)
     xg_h = max(0.25, min(xg_h, 5.0))
     xg_a = max(0.20, min(xg_a, 5.0))
     return xg_h, xg_a
@@ -249,6 +220,7 @@ def _poisson(k, mu):
 
 
 def chances_resultado(xg_h, xg_a, max_g=8):
+    """Probabilidade de vitória/empate via produto de Poisson independente."""
     p_h = p_e = p_a = 0.0
     for gh in range(max_g):
         for ga in range(max_g):
@@ -695,7 +667,7 @@ class Simulador:
         scroll.pack(side="right", fill="y")
         self.txt_narracao.config(yscrollcommand=scroll.set)
 
-        self.txt_narracao.tag_config("gol",   foreground=WIN,   font=("Consolas", 11, "bold"))
+        self.txt_narracao.tag_config("gol",   foreground=WIN,    font=("Consolas", 11, "bold"))
         self.txt_narracao.tag_config("apito", foreground=ACCENT, font=("Consolas", 11, "bold"))
 
     # ---------- botões ----------
@@ -783,13 +755,6 @@ class Simulador:
             messagebox.showwarning("Ops!", "Escolha duas seleções diferentes.")
             return
 
-        self.xg_a, self.xg_b = xg_partida(t1, t2)
-        gols_a_total = _sample_poisson(self.xg_a)
-        gols_b_total = _sample_poisson(self.xg_b)
-        self.min_gols_a, self.min_gols_b = sortear_minutos_gols(
-            gols_a_total, gols_b_total
-        )
-
         self.simulando = True
         self.btn.config(state="disabled", text="● AO VIVO", bg=LOSE, fg="white")
         self.btn_resumo.config(state="disabled")
@@ -826,27 +791,26 @@ class Simulador:
             self._narrar("⏸️  Fim do primeiro tempo.", tag="apito")
 
         t1, t2 = self.combo1.get(), self.combo2.get()
+        f1, f2 = selecoes[t1]["forca"], selecoes[t2]["forca"]
 
-        posse_a = self.xg_a / (self.xg_a + self.xg_b)
-        if random.random() < posse_a:
+        if random.random() < f1 / (f1 + f2):
             self.stats["posse_a"] += 1
-            atk_lado, atk_time = "a", t1
+            atk_lado, atk_time, atk_f = "a", t1, f1
+            def_f = f2
         else:
             self.stats["posse_b"] += 1
-            atk_lado, atk_time = "b", t2
+            atk_lado, atk_time, atk_f = "b", t2, f2
+            def_f = f1
 
         self.atk_atual = atk_lado
         self._animar_jogadores()
 
-        if self.minuto in self.min_gols_a:
-            self.stats["chutes_a"] += 1
-            self._gol("a", t1)
-        elif self.minuto in self.min_gols_b:
-            self.stats["chutes_b"] += 1
-            self._gol("b", t2)
-        elif random.random() < 0.20:
+        if random.random() < 0.18:
             self.stats[f"chutes_{atk_lado}"] += 1
-            if random.random() < 0.5:
+            chance = calcular_chance_gol(atk_f, def_f) * 8
+            if random.random() < chance:
+                self._gol(atk_lado, atk_time)
+            elif random.random() < 0.4:
                 self._narrar(f"  {self.minuto:02d}'  Chute de {atk_time}, defesa do goleiro!")
         elif random.random() < 0.12:
             self._narrar(f"  {self.minuto:02d}'  {random.choice(EVENTOS_NEUTROS)}")
